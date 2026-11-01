@@ -1,0 +1,31 @@
+{
+  "id": "370ac9e2-0628-5c0a-9754-9ede4fe666f9",
+  "name": "movie-api-dev",
+  "values": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api/v1",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "directorId",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "movieId",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "reviewId",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    }
+  ],
+  "_postman_variable_scope": "environment"
+}

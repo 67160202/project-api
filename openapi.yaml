@@ -1,0 +1,770 @@
+openapi: 3.0.3
+info:
+  title: Movie Information System API
+  description: |
+    REST API ระบบข้อมูลภาพยนตร์ (Pno = 3) — จัดการผู้กำกับ ภาพยนตร์ และรีวิวจากผู้ใช้
+    พร้อมบริการข้อมูลเสริมจาก API ภายนอก (iTunes Search API) ที่มี Timeout / Retry / Fallback
+    พัฒนาในรายวิชา 88736065
+
+    **รูปแบบ error ทุกกรณี:** `{ "error": { "code": "...", "message": "..." } }`
+  version: 2.0.0
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Development server
+tags:
+  - name: Directors
+    description: ผู้กำกับภาพยนตร์
+  - name: Movies
+    description: ภาพยนตร์ (resource หลัก)
+  - name: Reviews
+    description: รีวิวภาพยนตร์จากผู้ใช้
+  - name: External
+    description: ข้อมูลเสริมจาก API ภายนอก (Retry/Timeout/Fallback)
+
+paths:
+  /directors:
+    get:
+      tags: [Directors]
+      summary: แสดงรายการผู้กำกับทั้งหมด
+      operationId: listDirectors
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: รายการผู้กำกับ (เรียงตาม id)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Director"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags: [Directors]
+      summary: เพิ่มผู้กำกับ (ผู้ดูแลระบบ)
+      operationId: createDirector
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DirectorInput"
+      responses:
+        "201":
+          description: สร้างสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Director"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          description: มีผู้กำกับชื่อนี้อยู่แล้ว (code DUPLICATE_DIRECTOR)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: DUPLICATE_DIRECTOR
+                  message: มีผู้กำกับชื่อนี้อยู่แล้ว
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /directors/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Directors]
+      summary: ดูข้อมูลผู้กำกับ
+      operationId: getDirector
+      responses:
+        "200":
+          description: ข้อมูลผู้กำกับ
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Director"
+        "400":
+          $ref: "#/components/responses/InvalidId"
+        "404":
+          $ref: "#/components/responses/DirectorNotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Directors]
+      summary: แก้ไขข้อมูลผู้กำกับ (ผู้ดูแลระบบ)
+      description: แทนที่ข้อมูลทั้งหมด ต้องส่ง name เสมอ
+      operationId: updateDirector
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DirectorInput"
+      responses:
+        "200":
+          description: แก้ไขสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Director"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/DirectorNotFound"
+        "409":
+          description: มีผู้กำกับชื่อนี้อยู่แล้ว (code DUPLICATE_DIRECTOR)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: DUPLICATE_DIRECTOR
+                  message: มีผู้กำกับชื่อนี้อยู่แล้ว
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      tags: [Directors]
+      summary: ลบผู้กำกับ (ผู้ดูแลระบบ)
+      description: ลบไม่ได้หากผู้กำกับยังมีภาพยนตร์ในระบบ (FK ON DELETE RESTRICT)
+      operationId: deleteDirector
+      responses:
+        "204":
+          description: ลบสำเร็จ (ไม่มี body)
+        "400":
+          $ref: "#/components/responses/InvalidId"
+        "404":
+          $ref: "#/components/responses/DirectorNotFound"
+        "409":
+          description: ผู้กำกับยังมีภาพยนตร์อยู่ (code DIRECTOR_HAS_MOVIES)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: DIRECTOR_HAS_MOVIES
+                  message: ลบไม่ได้ เพราะผู้กำกับคนนี้ยังมีภาพยนตร์อยู่ในระบบ
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /movies:
+    get:
+      tags: [Movies]
+      summary: ค้นหา/แสดงรายการภาพยนตร์ (Use Case 1)
+      description: ค้นหาตามชื่อภาพยนตร์ด้วย `search` (LIKE %คำค้น%) พร้อมชื่อผู้กำกับ
+      operationId: listMovies
+      parameters:
+        - name: search
+          in: query
+          description: คำค้นในชื่อภาพยนตร์
+          schema:
+            type: string
+          example: Inception
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: รายการภาพยนตร์ที่ตรงเงื่อนไข (ถ้าไม่พบจะได้ data เป็น array ว่าง)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Movie"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags: [Movies]
+      summary: เพิ่มภาพยนตร์ (ผู้ดูแลระบบ — Use Case 4)
+      operationId: createMovie
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MovieInput"
+      responses:
+        "201":
+          description: สร้างสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Movie"
+        "400":
+          description: |
+            ข้อมูลไม่ถูกต้อง — code `VALIDATION_ERROR` (รูปแบบข้อมูลผิด),
+            `INVALID_DIRECTOR` (ไม่พบ directorId) หรือ `INVALID_JSON`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: INVALID_DIRECTOR
+                  message: ไม่พบผู้กำกับ directorId=999999
+        "409":
+          $ref: "#/components/responses/DuplicateMovie"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /movies/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Movies]
+      summary: ดูรายละเอียดภาพยนตร์พร้อมรีวิว (Use Case 2)
+      operationId: getMovie
+      responses:
+        "200":
+          description: รายละเอียดภาพยนตร์ ชื่อผู้กำกับ คะแนนเฉลี่ย และรีวิวทั้งหมด
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/MovieDetail"
+        "400":
+          $ref: "#/components/responses/InvalidId"
+        "404":
+          $ref: "#/components/responses/MovieNotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Movies]
+      summary: แก้ไขข้อมูลภาพยนตร์ (ผู้ดูแลระบบ — Use Case 4)
+      description: แทนที่ข้อมูลทั้งหมด ต้องส่ง title, directorId, releaseYear ครบ
+      operationId: updateMovie
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MovieInput"
+      responses:
+        "200":
+          description: แก้ไขสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Movie"
+        "400":
+          description: |
+            ข้อมูลไม่ถูกต้อง — code `VALIDATION_ERROR`, `INVALID_DIRECTOR`,
+            `INVALID_ID` หรือ `INVALID_JSON`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: VALIDATION_ERROR
+                  message: releaseYear ต้องเป็นจำนวนเต็ม 1888-2100
+        "404":
+          $ref: "#/components/responses/MovieNotFound"
+        "409":
+          $ref: "#/components/responses/DuplicateMovie"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      tags: [Movies]
+      summary: ลบภาพยนตร์ (ผู้ดูแลระบบ — Use Case 5)
+      description: รีวิวทั้งหมดของภาพยนตร์เรื่องนี้ถูกลบตาม (ON DELETE CASCADE)
+      operationId: deleteMovie
+      responses:
+        "204":
+          description: ลบสำเร็จ (ไม่มี body)
+        "400":
+          $ref: "#/components/responses/InvalidId"
+        "404":
+          $ref: "#/components/responses/MovieNotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /movies/{id}/reviews:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Reviews]
+      summary: แสดงรีวิวทั้งหมดของภาพยนตร์
+      operationId: listMovieReviews
+      responses:
+        "200":
+          description: รายการรีวิว เรียงจากใหม่ไปเก่า
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Review"
+        "400":
+          $ref: "#/components/responses/InvalidId"
+        "404":
+          $ref: "#/components/responses/MovieNotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags: [Reviews]
+      summary: เขียนรีวิวภาพยนตร์ (Use Case 3)
+      operationId: createReview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewInput"
+      responses:
+        "201":
+          description: สร้างรีวิวสำเร็จ (reviewDate คือวันที่ปัจจุบันของฐานข้อมูล)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Review"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/MovieNotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /reviews/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    delete:
+      tags: [Reviews]
+      summary: ลบรีวิว (ผู้ดูแลระบบ)
+      operationId: deleteReview
+      responses:
+        "204":
+          description: ลบสำเร็จ (ไม่มี body)
+        "400":
+          $ref: "#/components/responses/InvalidId"
+        "404":
+          description: ไม่พบรีวิว (code REVIEW_NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: REVIEW_NOT_FOUND
+                  message: ไม่พบรีวิว
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /movies/{id}/external-info:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [External]
+      summary: ข้อมูลเสริมของภาพยนตร์จาก API ภายนอก
+      description: |
+        เรียก iTunes Search API ด้วย Timeout 3 วินาที และ Retry สูงสุด 2 ครั้ง
+        (Exponential Backoff + Jitter) เมื่อเกิด network error, timeout, 429 หรือ 5xx
+
+        **ตอบ 200 เสมอเมื่อภาพยนตร์มีอยู่ในระบบ** — ถ้าบริการภายนอกล้มเหลวแม้ retry ครบ
+        จะได้ `source: "fallback"` และ `available: false` พร้อมข้อความแจ้งผู้ใช้
+        แทนการตอบ 5xx
+      operationId: getMovieExternalInfo
+      responses:
+        "200":
+          description: ได้ข้อมูลจากบริการภายนอก (source external) หรือค่า fallback
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [movieId, title, externalInfo]
+                    properties:
+                      movieId:
+                        type: integer
+                        example: 1
+                      title:
+                        type: string
+                        example: Inception
+                      externalInfo:
+                        $ref: "#/components/schemas/ExternalInfo"
+              examples:
+                external:
+                  summary: บริการภายนอกทำงานปกติ
+                  value:
+                    data:
+                      movieId: 1
+                      title: Inception
+                      externalInfo:
+                        source: external
+                        available: true
+                        details:
+                          title: Inception
+                          genre: Sci-Fi & Fantasy
+                          contentRating: PG-13
+                          releaseDate: "2010-07-16"
+                          description: A thief who steals corporate secrets through dream-sharing technology...
+                          artworkUrl: https://example.com/artwork.jpg
+                        message: ดึงข้อมูลเสริมจากบริการภายนอกสำเร็จ
+                fallback:
+                  summary: บริการภายนอกล้มเหลวหลัง retry ครบ
+                  value:
+                    data:
+                      movieId: 1
+                      title: Inception
+                      externalInfo:
+                        source: fallback
+                        available: false
+                        details: null
+                        message: ไม่สามารถดึงข้อมูลเสริมจากบริการภายนอกได้ในขณะนี้ กรุณาลองใหม่ภายหลัง
+        "400":
+          $ref: "#/components/responses/InvalidId"
+        "404":
+          $ref: "#/components/responses/MovieNotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      description: รหัส (จำนวนเต็มบวก)
+      schema:
+        type: integer
+        minimum: 1
+      example: 1
+    Page:
+      name: page
+      in: query
+      description: หน้าที่ต้องการ (เริ่มที่ 1)
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Limit:
+      name: limit
+      in: query
+      description: จำนวนรายการต่อหน้า (1-100)
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: |
+                VALIDATION_ERROR, INVALID_ID, INVALID_JSON, INVALID_DIRECTOR,
+                DIRECTOR_NOT_FOUND, MOVIE_NOT_FOUND, REVIEW_NOT_FOUND,
+                DUPLICATE_DIRECTOR, DUPLICATE_MOVIE, DIRECTOR_HAS_MOVIES,
+                ROUTE_NOT_FOUND, INTERNAL_ERROR
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: name ต้องเป็นข้อความ 1-150 ตัวอักษร
+    Pagination:
+      type: object
+      required: [page, limit, total, totalPages]
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 10
+        total:
+          type: integer
+          example: 5
+        totalPages:
+          type: integer
+          example: 1
+    Director:
+      type: object
+      required: [id, name, nationality]
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          maxLength: 150
+          example: Christopher Nolan
+        nationality:
+          type: string
+          nullable: true
+          maxLength: 80
+          example: British-American
+    DirectorInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 150
+          example: Greta Gerwig
+        nationality:
+          type: string
+          nullable: true
+          maxLength: 80
+          example: American
+    Movie:
+      type: object
+      required: [id, title, releaseYear, directorId, director]
+      properties:
+        id:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: Inception
+        releaseYear:
+          type: integer
+          example: 2010
+        directorId:
+          type: integer
+          example: 1
+        director:
+          type: string
+          description: ชื่อผู้กำกับ
+          example: Christopher Nolan
+    MovieInput:
+      type: object
+      required: [title, directorId, releaseYear]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: Tenet
+        directorId:
+          type: integer
+          minimum: 1
+          example: 1
+        releaseYear:
+          type: integer
+          minimum: 1888
+          maximum: 2100
+          example: 2020
+    MovieDetail:
+      allOf:
+        - $ref: "#/components/schemas/Movie"
+        - type: object
+          required: [directorNationality, averageRating, reviews]
+          properties:
+            directorNationality:
+              type: string
+              nullable: true
+              example: British-American
+            averageRating:
+              type: number
+              nullable: true
+              description: ค่าเฉลี่ยคะแนนรีวิว 1 ตำแหน่งทศนิยม (null ถ้ายังไม่มีรีวิว)
+              example: 8.8
+            reviews:
+              type: array
+              items:
+                $ref: "#/components/schemas/Review"
+    Review:
+      type: object
+      required: [id, movieId, reviewerName, rating, comment, reviewDate]
+      properties:
+        id:
+          type: integer
+          example: 1
+        movieId:
+          type: integer
+          example: 1
+        reviewerName:
+          type: string
+          example: Somchai P.
+        rating:
+          type: number
+          minimum: 0
+          maximum: 10
+          example: 9.0
+        comment:
+          type: string
+          nullable: true
+          example: เนื้อเรื่องดูซับซ้อนแต่สนุกมาก
+        reviewDate:
+          type: string
+          format: date
+          example: "2024-01-10"
+    ReviewInput:
+      type: object
+      required: [reviewerName, rating]
+      properties:
+        reviewerName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Malee S.
+        rating:
+          type: number
+          minimum: 0
+          maximum: 10
+          example: 8.5
+        comment:
+          type: string
+          nullable: true
+          maxLength: 5000
+          example: สนุกมาก
+    ExternalInfo:
+      type: object
+      required: [source, available, details, message]
+      properties:
+        source:
+          type: string
+          enum: [external, fallback]
+        available:
+          type: boolean
+          description: false เมื่อใช้ค่า fallback
+        details:
+          type: object
+          nullable: true
+          description: null เมื่อ fallback หรือบริการภายนอกไม่พบภาพยนตร์เรื่องนี้
+          properties:
+            title:
+              type: string
+              nullable: true
+            genre:
+              type: string
+              nullable: true
+            contentRating:
+              type: string
+              nullable: true
+            releaseDate:
+              type: string
+              nullable: true
+              example: "2010-07-16"
+            description:
+              type: string
+              nullable: true
+            artworkUrl:
+              type: string
+              nullable: true
+        message:
+          type: string
+
+  responses:
+    ValidationError:
+      description: ข้อมูลที่ส่งมาไม่ถูกต้อง (code VALIDATION_ERROR, INVALID_JSON หรือ INVALID_ID)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: rating ต้องเป็นตัวเลข 0-10
+    InvalidId:
+      description: id ใน path ไม่ใช่จำนวนเต็มบวก (code INVALID_ID)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: INVALID_ID
+              message: id ต้องเป็นจำนวนเต็มบวก
+    DirectorNotFound:
+      description: ไม่พบผู้กำกับ (code DIRECTOR_NOT_FOUND)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: DIRECTOR_NOT_FOUND
+              message: ไม่พบผู้กำกับ
+    MovieNotFound:
+      description: ไม่พบภาพยนตร์ (code MOVIE_NOT_FOUND)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: MOVIE_NOT_FOUND
+              message: ไม่พบภาพยนตร์
+    DuplicateMovie:
+      description: มีภาพยนตร์ชื่อและปีนี้อยู่แล้ว (code DUPLICATE_MOVIE)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: DUPLICATE_MOVIE
+              message: มีภาพยนตร์ชื่อและปีนี้อยู่แล้ว
+    InternalError:
+      description: ข้อผิดพลาดภายในเซิร์ฟเวอร์ (code INTERNAL_ERROR)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: INTERNAL_ERROR
+              message: Internal server error
